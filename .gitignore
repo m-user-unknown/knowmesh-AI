@@ -1,0 +1,157 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python build / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+wheels/
+
+# =========================
+# Virtual Environments
+# =========================
+.venv/
+venv/
+env/
+ENV/
+.env/
+.conda/
+
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# API Keys / Secrets
+# =========================
+*.pem
+*.key
+secrets.json
+credentials.json
+service-account.json
+
+# =========================
+# Jupyter Notebook
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Testing / Coverage
+# =========================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# =========================
+# Type Checking
+# =========================
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# LLM / RAG Local Data
+# =========================
+
+# Chroma
+chroma/
+chroma_db/
+.chroma/
+
+# FAISS
+faiss_index/
+*.faiss
+*.index
+
+# Local vector databases
+vectorstore/
+vector_store/
+embeddings/
+
+# =========================
+# Uploaded / Generated Data
+# =========================
+data/raw/
+data/processed/
+uploads/
+outputs/
+
+# Ignore large datasets
+*.csv
+*.jsonl
+*.parquet
+*.pkl
+*.pickle
+
+# Keep example files
+!data/example/
+!*.example.csv
+!*.example.json
+!*.example.jsonl
+
+# =========================
+# Model Files
+# =========================
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# VS Code
+# =========================
+.vscode/
+
+# =========================
+# PyCharm
+# =========================
+.idea/
+
+# =========================
+# Temporary Files
+# =========================
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# =========================
+# SQLite
+# =========================
+*.sqlite3
+*.db
+
+# =========================
+# Local configuration
+# =========================
+config.local.*
+settings.local.*
