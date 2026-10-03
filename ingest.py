@@ -1,11 +1,14 @@
 import os
-from dotenv import loar_dotenv
+from dotenv import load_dotenv
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader, UnstructuredMarkdownLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
+# from langchain_openai import OpenAIEmbeddings
+# from langchian_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
+# from langchian_groq import ChatGroq
 from langchain_chroma import Chroma
 
-loar_dotenv()
+load_dotenv()
 
 DOCS_DIR = "Data/Docs"
 CHROMA_DIR = "chroma_db"
@@ -21,24 +24,24 @@ def load_document():
   )
 
   # load markdown
-  markdown_loader = DirectoryLoader(
+  md_loader = DirectoryLoader(
     DOCS_DIR,
     glob="**/*.md",
     loader_cls=UnstructuredMarkdownLoader,
     show_progress=True
   )
 
-  docs = pdf_loader.load() + markdown_loader.load()
+  docs = pdf_loader.load() + md_loader.load()
   print(f"loaded : {len(docs)} Document")
   return docs
 
 def main():
-  document = load_document
+  document = load_document()
 
   text_splitter = RecursiveCharacterTextSplitter(
     chunk_size = 1000,
     chunk_overlap = 200,
-    length_funtion = len,
+    length_function = len,
   )
 
   chunks = text_splitter.split_documents(document)
@@ -50,12 +53,12 @@ def main():
     source = chunk.metadata.get("source","unkown")
     chunk.metadata["filename"] = os.path.basename(source)
 
-  embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-
+  # embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+  embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
   # store chunks in vectore db
   vectorStore = Chroma.from_documents(
-    document=chunks,
-    embeddings=embeddings,
+    documents=chunks,
+    embedding=embeddings,
     persist_directory=CHROMA_DIR,
     collection_name=COLLECTION_NAME
   )

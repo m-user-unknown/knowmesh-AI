@@ -1,10 +1,14 @@
 langchain
 langchain-community
-langchain-openai
+# langchain-openai
 langchain-chroma
 langchain-text-splitters
+# langchain-huggingface
+langchain-groq
+sentence-transformers
 chromadb
 pypdf
 unstructured
 streamlit
 python-dotenv
+markdown
