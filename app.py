@@ -31,7 +31,7 @@ retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
 # Groq LLM (very fast + free tier)
 llm = ChatGroq(
-    model="meta-llama/llama-4-scout-17b-16e-instruct",
+    model="openai/gpt-oss-20b",
     temperature=0,
     max_tokens=None,
     reasoning_format="parsed",
