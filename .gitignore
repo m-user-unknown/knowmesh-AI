@@ -95,6 +95,8 @@ data/raw/
 data/processed/
 uploads/
 outputs/
+Data/
+Docs/
 
 # Ignore large datasets
 *.csv
