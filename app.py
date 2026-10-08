@@ -1,47 +1,130 @@
-import streamlit as st
+import os
+from typing import TypedDict, List, Literal
 from dotenv import load_dotenv
+
+import streamlit as st
+from langchain_core.documents import Document
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
+from langgraph.graph import StateGraph, END
 
 load_dotenv()
 
 CHROMA_DIR = "chroma_db"
 COLLECTION_NAME = "knowmesh"
+MODEL_NAME = "openai/gpt-oss-20b"   # Working free-tier model
 
-st.set_page_config(page_title="Second Brain MVP", page_icon="🖥️")
-st.title("🖥️ Personal Second Brain (Groq + Local Embeddings)")
+class AgentState(TypedDict):
+    question: str
+    rewritten_question: str
+    documents: List[Document]
+    relevant_docs: List[Document]
+    generation: str
+
 
 @st.cache_resource
-def load_vectorstore():
+def get_llm():
+    return ChatGroq(model=MODEL_NAME, temperature=0)
+
+
+@st.cache_resource
+def get_retriever():
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
-    return Chroma(
+    vectorstore = Chroma(
         persist_directory=CHROMA_DIR,
         embedding_function=embeddings,
         collection_name=COLLECTION_NAME
     )
+    return vectorstore.as_retriever(search_kwargs={"k": 6})
 
-vectorstore = load_vectorstore()
-retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
-# Groq LLM (very fast + free tier)
-llm = ChatGroq(
-    model="openai/gpt-oss-20b",
-    temperature=0,
-    max_tokens=None,
-    reasoning_format="parsed",
-    timeout=None,
-    max_retries=2,
-    # other params...
-)
+llm = get_llm()
+retriever = get_retriever()
 
-prompt = ChatPromptTemplate.from_template("""
-You are a helpful assistant that answers questions based only on the provided context from the user's personal knowledge base.
+
+def rewrite_query(state: AgentState):
+    """Improve the user question for better retrieval"""
+    question = state["question"]
+
+    prompt = ChatPromptTemplate.from_template(
+        """You are a query rewriting expert.
+Rewrite the following question to make it clearer and better for semantic search.
+Keep the meaning the same. Return only the rewritten question.
+
+Question: {question}
+
+Rewritten question:"""
+    )
+
+    chain = prompt | llm | StrOutputParser()
+    rewritten = chain.invoke({"question": question})
+
+    return {"rewritten_question": rewritten.strip()}
+
+
+def retrieve_documents(state: AgentState):
+    """Retrieve documents using the rewritten question"""
+    query = state.get("rewritten_question") or state["question"]
+    docs = retriever.invoke(query)
+    return {"documents": docs}
+
+
+def grade_documents(state: AgentState):
+    """Grade each document for relevance"""
+    question = state["question"]
+    documents = state["documents"]
+
+    grade_prompt = ChatPromptTemplate.from_template(
+        """You are a grader assessing relevance of a retrieved document to a user question.
+
+Retrieved document:
+{document}
+
+User question: {question}
+
+If the document contains information relevant to the question, reply with "yes".
+Otherwise reply with "no".
+
+Answer with only "yes" or "no":"""
+    )
+
+    chain = grade_prompt | llm | StrOutputParser()
+
+    relevant_docs = []
+    for doc in documents:
+        score = chain.invoke({
+            "document": doc.page_content,
+            "question": question
+        }).strip().lower()
+
+        if "yes" in score:
+            relevant_docs.append(doc)
+
+    return {"relevant_docs": relevant_docs}
+
+
+def generate_answer(state: AgentState):
+    """Generate final answer from relevant documents"""
+    question = state["question"]
+    docs = state["relevant_docs"]
+
+    if not docs:
+        return {
+            "generation": "I couldn't find relevant information in your documents to answer this question."
+        }
+
+    context = "\n\n".join(
+        f"[Source: {doc.metadata.get('filename', 'unknown')}]\n{doc.page_content}"
+        for doc in docs
+    )
+
+    prompt = ChatPromptTemplate.from_template(
+        """You are a helpful assistant answering questions based only on the provided context from the user's personal knowledge base.
 
 Context:
 {context}
@@ -50,47 +133,59 @@ Question: {question}
 
 Instructions:
 - Answer clearly and concisely.
-- Always cite the source using the filename.
-- If the answer is not in the context, say "I couldn't find this information in your documents."
+- Always cite the source filename.
+- If the answer is not in the context, say you couldn't find it.
 
-Answer:
-""")
-
-def format_docs(docs):
-    return "\n\n".join(
-        f"[Source: {doc.metadata.get('filename', 'unknown')}]\n{doc.page_content}"
-        for doc in docs
+Answer:"""
     )
 
-rag_chain = (
-    {"context": retriever | format_docs, "question": RunnablePassthrough()}
-    | prompt
-    | llm
-    | StrOutputParser()
-)
+    chain = prompt | llm | StrOutputParser()
+    answer = chain.invoke({"context": context, "question": question})
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    return {"generation": answer}
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+def should_generate(state: AgentState) -> Literal["generate", "no_docs"]:
+    if len(state.get("relevant_docs", [])) > 0:
+        return "generate"
+    return "no_docs"
 
-if question := st.chat_input("Ask something about your documents..."):
-    st.session_state.messages.append({"role": "user", "content": question})
-    with st.chat_message("user"):
-        st.markdown(question)
 
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            docs = retriever.invoke(question)
-            answer = rag_chain.invoke(question)
-            
-            st.markdown(answer)
-            
-            with st.expander("Sources"):
-                for i, doc in enumerate(docs, 1):
-                    st.markdown(f"**{i}. {doc.metadata.get('filename', 'unknown')}**")
-                    st.caption(doc.page_content[:300] + "...")
+def no_relevant_docs(state: AgentState):
+    return {
+        "generation": "I searched your documents but couldn't find relevant information for this question."
+    }
 
-    st.session_state.messages.append({"role": "assistant", "content": answer})
+def build_graph():
+    workflow = StateGraph(AgentState)
+
+    # Add nodes
+    workflow.add_node("rewrite", rewrite_query)
+    workflow.add_node("retrieve", retrieve_documents)
+    workflow.add_node("grade", grade_documents)
+    workflow.add_node("generate", generate_answer)
+    workflow.add_node("no_docs", no_relevant_docs)
+
+    # Entry point
+    workflow.set_entry_point("rewrite")
+
+    # Edges
+    workflow.add_edge("rewrite", "retrieve")
+    workflow.add_edge("retrieve", "grade")
+
+    # Conditional after grading
+    workflow.add_conditional_edges(
+        "grade",
+        should_generate,
+        {
+            "generate": "generate",
+            "no_docs": "no_docs"
+        }
+    )
+
+    workflow.add_edge("generate", END)
+    workflow.add_edge("no_docs", END)
+
+    return workflow.compile()
+
+
+app = build_graph()
