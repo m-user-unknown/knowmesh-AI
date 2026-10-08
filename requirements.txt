@@ -12,3 +12,6 @@ unstructured
 streamlit
 python-dotenv
 markdown
+langgraph
+torch
+torchvision
