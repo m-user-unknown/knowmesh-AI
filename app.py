@@ -189,3 +189,49 @@ def build_graph():
 
 
 app = build_graph()
+
+
+st.set_page_config(page_title="KnowMesh Agent", page_icon="🧠")
+st.title("KnowMesh Agent (Phase 2)")
+st.caption("LangGraph + Query Rewrite + Document Grading")
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Show chat history
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# Chat input
+if question := st.chat_input("Ask something about your documents..."):
+    st.session_state.messages.append({"role": "user", "content": question})
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            # Run the LangGraph agent
+            result = app.invoke({
+                "question": question,
+                "rewritten_question": "",
+                "documents": [],
+                "relevant_docs": [],
+                "generation": ""
+            })
+
+            answer = result["generation"]
+            st.markdown(answer)
+
+            # Show debug info
+            with st.expander("Agent Debug Info"):
+                st.write("**Rewritten Question:**", result.get("rewritten_question", ""))
+                st.write("**Retrieved Docs:**", len(result.get("documents", [])))
+                st.write("**Relevant Docs:**", len(result.get("relevant_docs", [])))
+
+                if result.get("relevant_docs"):
+                    st.write("**Sources used:**")
+                    for i, doc in enumerate(result["relevant_docs"], 1):
+                        st.markdown(f"{i}. `{doc.metadata.get('filename', 'unknown')}`")
+
+    st.session_state.messages.append({"role": "assistant", "content": answer})
