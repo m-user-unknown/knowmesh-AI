@@ -190,48 +190,446 @@ def build_graph():
 
 app = build_graph()
 
+# --------------------------------------------------
+# Page Configuration
+# --------------------------------------------------
+st.set_page_config(
+    page_title="KnowMesh Agent",
+    page_icon="🧠",
+    layout="centered",
+    initial_sidebar_state="expanded",
+)
 
-st.set_page_config(page_title="KnowMesh Agent", page_icon="🧠")
-st.title("KnowMesh Agent (Phase 2)")
-st.caption("LangGraph + Query Rewrite + Document Grading")
+# --------------------------------------------------
+# Custom CSS: Black, White, Blue
+# --------------------------------------------------
+st.markdown("""
+<style>
+    :root {
+        --bg: #080B12;
+        --panel: #101521;
+        --border: #222B3B;
+        --text: #F5F7FA;
+        --muted: #8D9AAF;
+        --blue: #3B82F6;
+        --blue-light: #60A5FA;
+    }
 
+    .stApp {
+        background: var(--bg);
+        color: var(--text);
+    }
+
+    [data-testid="stHeader"] {
+        background: transparent;
+    }
+
+    [data-testid="stSidebar"] {
+        background: #0C1019;
+        border-right: 1px solid var(--border);
+    }
+
+    [data-testid="stSidebar"] > div {
+        padding-top: 2rem;
+    }
+
+    .brand {
+        font-size: 1.55rem;
+        font-weight: 750;
+        letter-spacing: -0.8px;
+        color: var(--text);
+        margin-bottom: 4px;
+    }
+
+    .brand span {
+        color: var(--blue-light);
+    }
+
+    .brand-caption {
+        color: var(--muted);
+        font-size: 0.83rem;
+        margin-bottom: 30px;
+    }
+
+    .hero {
+        padding: 36px 0 24px 0;
+    }
+
+    .eyebrow {
+        color: var(--blue-light);
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 12px;
+    }
+
+    .hero h1 {
+        color: var(--text);
+        font-size: clamp(2rem, 5vw, 2.7rem);
+        font-weight: 750;
+        letter-spacing: -1.8px;
+        line-height: 1.15;
+        margin: 0;
+    }
+
+    .hero p {
+        color: var(--muted);
+        font-size: 0.98rem;
+        line-height: 1.7;
+        margin-top: 12px;
+        max-width: 550px;
+    }
+
+    .section-label {
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 650;
+        letter-spacing: 1.2px;
+        text-transform: uppercase;
+        margin: 20px 0 10px 0;
+    }
+
+    .feature {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 15px;
+        min-height: 105px;
+    }
+
+    .feature-title {
+        color: var(--text);
+        font-size: 0.91rem;
+        font-weight: 650;
+        margin-bottom: 7px;
+    }
+
+    .feature-description {
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.5;
+    }
+
+    [data-testid="stChatMessage"] {
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 15px 17px;
+        margin-bottom: 12px;
+    }
+
+    [data-testid="stChatMessage"]:has(
+        [data-testid="chatAvatarIcon-user"]
+    ) {
+        background: #111B2B;
+        border-color: #233957;
+    }
+
+    [data-testid="stChatInput"] {
+        border: 1px solid #2A3B56;
+        border-radius: 14px;
+        background: #101521;
+    }
+
+    [data-testid="stChatInput"]:focus-within {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 1px var(--blue);
+    }
+
+    .stButton > button {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text);
+        border-radius: 9px;
+        transition: 0.2s ease;
+    }
+
+    .stButton > button:hover {
+        border-color: var(--blue);
+        color: var(--blue-light);
+        background: #111B2B;
+    }
+
+    [data-testid="stExpander"] {
+        background: #0D121D;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+    }
+
+    .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #24436B;
+        background: #101E33;
+        color: #93C5FD;
+        padding: 6px 11px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .status-dot {
+        height: 7px;
+        width: 7px;
+        border-radius: 50%;
+        background: #60A5FA;
+    }
+
+    .footer {
+        color: #64748B;
+        font-size: 0.75rem;
+        text-align: center;
+        padding: 24px 0 12px;
+    }
+
+    hr {
+        border-color: var(--border);
+    }
+
+    #MainMenu, footer {
+        visibility: hidden;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# --------------------------------------------------
+# Sidebar
+# --------------------------------------------------
+with st.sidebar:
+    st.markdown(
+        '<div class="brand">KnowMesh<span>.</span></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="brand-caption">Your personal knowledge agent</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
+    st.markdown("### Workspace")
+    st.markdown(
+        '<div class="status">'
+        '<span class="status-dot"></span>'
+        'Phase 2 · LangGraph'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("")
+    if st.button("＋  New conversation", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("**Agent capabilities**")
+    st.caption("01 · Query rewriting")
+    st.caption("02 · Document retrieval")
+    st.caption("03 · Relevance grading")
+    st.caption("04 · Context-grounded answers")
+
+    st.markdown("---")
+    st.caption("KNOWMESH AI · PHASE 02")
+
+
+# --------------------------------------------------
+# Main Header
+# --------------------------------------------------
+st.markdown("""
+<div class="hero">
+    <div class="eyebrow">PERSONAL KNOWLEDGE BASE</div>
+    <h1>Think with your<br>documents.</h1>
+    <p>
+        Ask questions, explore your knowledge, and get answers
+        through an intelligent retrieval pipeline powered by LangGraph.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# --------------------------------------------------
+# Session State
+# --------------------------------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Show chat history
-for message in st.session_state.messages:
+
+# --------------------------------------------------
+# Empty State / Feature Cards
+# --------------------------------------------------
+if not st.session_state.messages:
+    st.markdown('<div class="section-label">What happens behind the scenes</div>',
+                unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("""
+        <div class="feature">
+            <div class="feature-title">01 / Query rewrite</div>
+            <div class="feature-description">
+                Refines your question to improve retrieval quality.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div class="feature">
+            <div class="feature-title">02 / Smart retrieval</div>
+            <div class="feature-description">
+                Finds relevant document chunks from your knowledge base.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("")
+
+    col3, col4 = st.columns(2)
+
+    with col3:
+        st.markdown("""
+        <div class="feature">
+            <div class="feature-title">03 / Document grading</div>
+            <div class="feature-description">
+                Evaluates retrieved content for relevance to your query.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col4:
+        st.markdown("""
+        <div class="feature">
+            <div class="feature-title">04 / Grounded answers</div>
+            <div class="feature-description">
+                Generates a response using the selected context.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("")
+
+
+# --------------------------------------------------
+# Chat History
+# --------------------------------------------------
+for index, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Chat input
+        # Display debug details for assistant responses
+        if message["role"] == "assistant" and message.get("debug"):
+            with st.expander("Agent execution details"):
+                debug = message["debug"]
+
+                st.markdown("**Rewritten question**")
+                st.write(debug.get("rewritten_question") or "Not available")
+
+                st.markdown("**Retrieved documents**")
+                st.write(debug.get("retrieved_count", 0))
+
+                st.markdown("**Relevant documents**")
+                st.write(debug.get("relevant_count", 0))
+
+                sources = debug.get("sources", [])
+                if sources:
+                    st.markdown("**Sources used**")
+                    for source in sources:
+                        st.markdown(f"- `{source}`")
+
+
+# --------------------------------------------------
+# Chat Input + LangGraph
+# --------------------------------------------------
 if question := st.chat_input("Ask something about your documents..."):
-    st.session_state.messages.append({"role": "user", "content": question})
+
+    st.session_state.messages.append({
+        "role": "user",
+        "content": question,
+    })
+
     with st.chat_message("user"):
         st.markdown(question)
 
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            # Run the LangGraph agent
-            result = app.invoke({
-                "question": question,
-                "rewritten_question": "",
-                "documents": [],
-                "relevant_docs": [],
-                "generation": ""
-            })
+        with st.spinner("Searching your knowledge..."):
 
-            answer = result["generation"]
-            st.markdown(answer)
+            try:
+                result = app.invoke({
+                    "question": question,
+                    "rewritten_question": "",
+                    "documents": [],
+                    "relevant_docs": [],
+                    "generation": "",
+                })
 
-            # Show debug info
-            with st.expander("Agent Debug Info"):
-                st.write("**Rewritten Question:**", result.get("rewritten_question", ""))
-                st.write("**Retrieved Docs:**", len(result.get("documents", [])))
-                st.write("**Relevant Docs:**", len(result.get("relevant_docs", [])))
+                answer = result.get(
+                    "generation",
+                    "I couldn't generate an answer for this question.",
+                )
 
-                if result.get("relevant_docs"):
-                    st.write("**Sources used:**")
-                    for i, doc in enumerate(result["relevant_docs"], 1):
-                        st.markdown(f"{i}. `{doc.metadata.get('filename', 'unknown')}`")
+                st.markdown(answer)
 
-    st.session_state.messages.append({"role": "assistant", "content": answer})
+                relevant_docs = result.get("relevant_docs", [])
+
+                debug = {
+                    "rewritten_question": result.get(
+                        "rewritten_question", ""
+                    ),
+                    "retrieved_count": len(result.get("documents", [])),
+                    "relevant_count": len(relevant_docs),
+                    "sources": list(dict.fromkeys(
+                        doc.metadata.get("filename", "unknown")
+                        for doc in relevant_docs
+                    )),
+                }
+
+                with st.expander("Agent execution details"):
+                    st.markdown("**Rewritten question**")
+                    st.write(debug["rewritten_question"] or "Not available")
+
+                    st.markdown("**Retrieved documents**")
+                    st.write(debug["retrieved_count"])
+
+                    st.markdown("**Relevant documents**")
+                    st.write(debug["relevant_count"])
+
+                    if debug["sources"]:
+                        st.markdown("**Sources used**")
+                        for source in debug["sources"]:
+                            st.markdown(f"- `{source}`")
+
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": answer,
+                    "debug": debug,
+                })
+
+            except Exception as error:
+                error_message = (
+                    "Something went wrong while processing your question. "
+                    "Please check the agent configuration and try again."
+                )
+
+                st.error(error_message)
+
+                # Detailed errors belong in the server logs.
+                print(f"KnowMesh agent error: {error!r}")
+
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": error_message,
+                })
+
+
+# --------------------------------------------------
+# Footer
+# --------------------------------------------------
+st.markdown("""
+<div class="footer">
+    KNOWMESH AGENT · BUILT WITH LANGGRAPH & STREAMLIT
+</div>
+""", unsafe_allow_html=True)
