@@ -190,9 +190,6 @@ def build_graph():
 
 app = build_graph()
 
-# --------------------------------------------------
-# Page Configuration
-# --------------------------------------------------
 st.set_page_config(
     page_title="KnowMesh Agent",
     page_icon="🧠",
@@ -200,9 +197,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --------------------------------------------------
-# Custom CSS: Black, White, Blue
-# --------------------------------------------------
 st.markdown("""
 <style>
     :root {
@@ -394,10 +388,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
-# --------------------------------------------------
-# Sidebar
-# --------------------------------------------------
 with st.sidebar:
     st.markdown(
         '<div class="brand">KnowMesh<span>.</span></div>',
@@ -435,9 +425,6 @@ with st.sidebar:
     st.caption("KNOWMESH AI · PHASE 02")
 
 
-# --------------------------------------------------
-# Main Header
-# --------------------------------------------------
 st.markdown("""
 <div class="hero">
     <div class="eyebrow">PERSONAL KNOWLEDGE BASE</div>
@@ -450,16 +437,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# --------------------------------------------------
-# Session State
-# --------------------------------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 
-# --------------------------------------------------
-# Empty State / Feature Cards
-# --------------------------------------------------
+
 if not st.session_state.messages:
     st.markdown('<div class="section-label">What happens behind the scenes</div>',
                 unsafe_allow_html=True)
@@ -513,9 +495,6 @@ if not st.session_state.messages:
     st.markdown("")
 
 
-# --------------------------------------------------
-# Chat History
-# --------------------------------------------------
 for index, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -541,9 +520,7 @@ for index, message in enumerate(st.session_state.messages):
                         st.markdown(f"- `{source}`")
 
 
-# --------------------------------------------------
-# Chat Input + LangGraph
-# --------------------------------------------------
+
 if question := st.chat_input("Ask something about your documents..."):
 
     st.session_state.messages.append({
@@ -625,9 +602,7 @@ if question := st.chat_input("Ask something about your documents..."):
                 })
 
 
-# --------------------------------------------------
-# Footer
-# --------------------------------------------------
+
 st.markdown("""
 <div class="footer">
     KNOWMESH AGENT · BUILT WITH LANGGRAPH & STREAMLIT
