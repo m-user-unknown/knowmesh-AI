@@ -1,8 +1,10 @@
 import os
+import pickle
 from typing import TypedDict, List, Literal
-from dotenv import load_dotenv
 
 import streamlit as st
+from dotenv import load_dotenv
+
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -13,71 +15,124 @@ from langgraph.graph import StateGraph, END
 
 load_dotenv()
 
+# ======================
+# CONFIG
+# ======================
 CHROMA_DIR = "chroma_db"
+PARENTS_PATH = "parent_store.pkl"
 COLLECTION_NAME = "knowmesh"
-MODEL_NAME = "openai/gpt-oss-20b"   # Working free-tier model
+MODEL_NAME = "openai/gpt-oss-20b"  # change if needed
 
+
+# ======================
+# STATE
+# ======================
 class AgentState(TypedDict):
     question: str
+    chat_history: List[str]
+    summary: str
     rewritten_question: str
     documents: List[Document]
     relevant_docs: List[Document]
     generation: str
 
 
+# ======================
+# RESOURCES
+# ======================
 @st.cache_resource
 def get_llm():
     return ChatGroq(model=MODEL_NAME, temperature=0)
 
 
 @st.cache_resource
-def get_retriever():
+def get_vectorstore():
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
-    vectorstore = Chroma(
+    return Chroma(
         persist_directory=CHROMA_DIR,
         embedding_function=embeddings,
-        collection_name=COLLECTION_NAME
+        collection_name=COLLECTION_NAME,
     )
-    return vectorstore.as_retriever(search_kwargs={"k": 6})
+
+
+@st.cache_resource
+def load_parent_store():
+    if not os.path.exists(PARENTS_PATH):
+        return {}
+    with open(PARENTS_PATH, "rb") as f:
+        return pickle.load(f)
 
 
 llm = get_llm()
-retriever = get_retriever()
 
 
+def parent_child_retrieve(query: str, k: int = 5) -> List[Document]:
+    vectorstore = get_vectorstore()
+    parent_store = load_parent_store()
+
+    child_docs = vectorstore.similarity_search(query, k=k * 3)
+
+    seen = set()
+    parents = []
+    for child in child_docs:
+        pid = child.metadata.get("parent_id")
+        if pid and pid not in seen and pid in parent_store:
+            seen.add(pid)
+            parents.append(parent_store[pid])
+        if len(parents) >= k:
+            break
+
+    if not parents:
+        return child_docs[:k]
+    return parents
+
+
+# ======================
+# NODES
+# ======================
 def rewrite_query(state: AgentState):
-    """Improve the user question for better retrieval"""
     question = state["question"]
+    history = state.get("chat_history", [])
+    summary = state.get("summary", "")
+    history_text = "\n".join(history[-6:])
 
     prompt = ChatPromptTemplate.from_template(
-        """You are a query rewriting expert.
-Rewrite the following question to make it clearer and better for semantic search.
-Keep the meaning the same. Return only the rewritten question.
+        """You are a query rewriting expert for a personal knowledge base.
 
-Question: {question}
+Conversation summary:
+{summary}
 
-Rewritten question:"""
+Recent conversation:
+{history}
+
+Current user question:
+{question}
+
+Rewrite the current question into a clear, standalone search query.
+Include necessary context from the conversation.
+Return only the rewritten question.
+"""
     )
-
     chain = prompt | llm | StrOutputParser()
-    rewritten = chain.invoke({"question": question})
-
+    rewritten = chain.invoke({
+        "summary": summary or "None",
+        "history": history_text or "None",
+        "question": question,
+    })
     return {"rewritten_question": rewritten.strip()}
 
 
 def retrieve_documents(state: AgentState):
-    """Retrieve documents using the rewritten question"""
     query = state.get("rewritten_question") or state["question"]
-    docs = retriever.invoke(query)
+    docs = parent_child_retrieve(query, k=6)
     return {"documents": docs}
 
 
 def grade_documents(state: AgentState):
-    """Grade each document for relevance"""
     question = state["question"]
-    documents = state["documents"]
+    documents = state.get("documents", [])
 
     grade_prompt = ChatPromptTemplate.from_template(
         """You are a grader assessing relevance of a retrieved document to a user question.
@@ -87,21 +142,18 @@ Retrieved document:
 
 User question: {question}
 
-If the document contains information relevant to the question, reply with "yes".
-Otherwise reply with "no".
-
-Answer with only "yes" or "no":"""
+If the document is relevant, reply with "yes". Otherwise reply with "no".
+Answer with only "yes" or "no".
+"""
     )
-
     chain = grade_prompt | llm | StrOutputParser()
 
     relevant_docs = []
     for doc in documents:
         score = chain.invoke({
-            "document": doc.page_content,
-            "question": question
+            "document": doc.page_content[:1500],
+            "question": question,
         }).strip().lower()
-
         if "yes" in score:
             relevant_docs.append(doc)
 
@@ -109,45 +161,53 @@ Answer with only "yes" or "no":"""
 
 
 def generate_answer(state: AgentState):
-    """Generate final answer from relevant documents"""
     question = state["question"]
-    docs = state["relevant_docs"]
+    docs = state.get("relevant_docs") or state.get("documents") or []
+    history = state.get("chat_history", [])
+    summary = state.get("summary", "")
 
     if not docs:
         return {
-            "generation": "I couldn't find relevant information in your documents to answer this question."
+            "generation": "I couldn't find relevant information in your documents."
         }
 
     context = "\n\n".join(
         f"[Source: {doc.metadata.get('filename', 'unknown')}]\n{doc.page_content}"
         for doc in docs
     )
+    history_text = "\n".join(history[-6:])
 
     prompt = ChatPromptTemplate.from_template(
-        """You are a helpful assistant answering questions based only on the provided context from the user's personal knowledge base.
+        """You are a helpful personal knowledge assistant.
 
-Context:
+Conversation summary:
+{summary}
+
+Recent conversation:
+{history}
+
+Context from documents:
 {context}
 
-Question: {question}
+Current question: {question}
 
 Instructions:
-- Answer clearly and concisely.
-- Always cite the source filename.
-- If the answer is not in the context, say you couldn't find it.
+- Use conversation history for follow-up questions.
+- Answer mainly from the documents.
+- Cite source filenames.
+- If information is missing, say so clearly.
 
-Answer:"""
+Answer:
+"""
     )
-
     chain = prompt | llm | StrOutputParser()
-    answer = chain.invoke({"context": context, "question": question})
-
+    answer = chain.invoke({
+        "summary": summary or "None",
+        "history": history_text or "None",
+        "context": context,
+        "question": question,
+    })
     return {"generation": answer}
-
-def should_generate(state: AgentState) -> Literal["generate", "no_docs"]:
-    if len(state.get("relevant_docs", [])) > 0:
-        return "generate"
-    return "no_docs"
 
 
 def no_relevant_docs(state: AgentState):
@@ -155,40 +215,95 @@ def no_relevant_docs(state: AgentState):
         "generation": "I searched your documents but couldn't find relevant information for this question."
     }
 
+
+def update_memory(state: AgentState):
+    question = state["question"]
+    answer = state["generation"]
+    history = state.get("chat_history", [])
+    summary = state.get("summary", "")
+
+    new_history = history + [
+        f"User: {question}",
+        f"Assistant: {answer}",
+    ]
+
+    if len(new_history) > 12:
+        older = "\n".join(new_history[:-6])
+        recent = new_history[-6:]
+
+        summary_prompt = ChatPromptTemplate.from_template(
+            """Summarize the conversation briefly. Keep key facts, decisions, and topics.
+
+Previous summary:
+{summary}
+
+Conversation:
+{conversation}
+
+Updated summary:
+"""
+        )
+        chain = summary_prompt | llm | StrOutputParser()
+        new_summary = chain.invoke({
+            "summary": summary or "None",
+            "conversation": older,
+        })
+        return {
+            "chat_history": recent,
+            "summary": new_summary.strip(),
+        }
+
+    return {
+        "chat_history": new_history,
+        "summary": summary,
+    }
+
+
+def should_generate(state: AgentState) -> Literal["generate", "no_docs"]:
+    if len(state.get("relevant_docs", [])) > 0:
+        return "generate"
+    return "no_docs"
+
+
+# ======================
+# GRAPH
+# ======================
 def build_graph():
     workflow = StateGraph(AgentState)
 
-    # Add nodes
     workflow.add_node("rewrite", rewrite_query)
     workflow.add_node("retrieve", retrieve_documents)
     workflow.add_node("grade", grade_documents)
     workflow.add_node("generate", generate_answer)
     workflow.add_node("no_docs", no_relevant_docs)
+    workflow.add_node("update_memory", update_memory)
 
-    # Entry point
     workflow.set_entry_point("rewrite")
-
-    # Edges
     workflow.add_edge("rewrite", "retrieve")
     workflow.add_edge("retrieve", "grade")
 
-    # Conditional after grading
     workflow.add_conditional_edges(
         "grade",
         should_generate,
         {
             "generate": "generate",
-            "no_docs": "no_docs"
-        }
+            "no_docs": "no_docs",
+        },
     )
 
-    workflow.add_edge("generate", END)
-    workflow.add_edge("no_docs", END)
+    workflow.add_edge("generate", "update_memory")
+    workflow.add_edge("no_docs", "update_memory")
+    workflow.add_edge("update_memory", END)
 
     return workflow.compile()
 
 
 app = build_graph()
+
+
+# ======================
+# STREAMLIT UI
+# ======================
 
 st.set_page_config(
     page_title="KnowMesh Agent",
@@ -388,6 +503,22 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+# ----------------------------------------------------------------------
+# Session state
+# ----------------------------------------------------------------------
+for key, default in (
+    ("messages", []),
+    ("chat_history", []),
+    ("summary", ""),
+):
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+
+# ----------------------------------------------------------------------
+# Sidebar
+# ----------------------------------------------------------------------
 with st.sidebar:
     st.markdown(
         '<div class="brand">KnowMesh<span>.</span></div>',
@@ -412,6 +543,8 @@ with st.sidebar:
     st.markdown("")
     if st.button("＋  New conversation", use_container_width=True):
         st.session_state.messages = []
+        st.session_state.chat_history = []
+        st.session_state.summary = ""
         st.rerun()
 
     st.markdown("---")
@@ -420,11 +553,15 @@ with st.sidebar:
     st.caption("02 · Document retrieval")
     st.caption("03 · Relevance grading")
     st.caption("04 · Context-grounded answers")
+    st.caption("05 · Conversational memory")
 
     st.markdown("---")
     st.caption("KNOWMESH AI · PHASE 02")
 
 
+# ----------------------------------------------------------------------
+# Hero
+# ----------------------------------------------------------------------
 st.markdown("""
 <div class="hero">
     <div class="eyebrow">PERSONAL KNOWLEDGE BASE</div>
@@ -437,17 +574,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-
-
+# ----------------------------------------------------------------------
+# Empty-state feature cards
+# ----------------------------------------------------------------------
 if not st.session_state.messages:
-    st.markdown('<div class="section-label">What happens behind the scenes</div>',
-                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-label">What happens behind the scenes</div>',
+        unsafe_allow_html=True,
+    )
 
     col1, col2 = st.columns(2)
-
     with col1:
         st.markdown("""
         <div class="feature">
@@ -457,7 +593,6 @@ if not st.session_state.messages:
             </div>
         </div>
         """, unsafe_allow_html=True)
-
     with col2:
         st.markdown("""
         <div class="feature">
@@ -471,7 +606,6 @@ if not st.session_state.messages:
     st.markdown("")
 
     col3, col4 = st.columns(2)
-
     with col3:
         st.markdown("""
         <div class="feature">
@@ -481,7 +615,6 @@ if not st.session_state.messages:
             </div>
         </div>
         """, unsafe_allow_html=True)
-
     with col4:
         st.markdown("""
         <div class="feature">
@@ -495,11 +628,13 @@ if not st.session_state.messages:
     st.markdown("")
 
 
-for index, message in enumerate(st.session_state.messages):
+# ----------------------------------------------------------------------
+# Render chat history
+# ----------------------------------------------------------------------
+for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-        # Display debug details for assistant responses
         if message["role"] == "assistant" and message.get("debug"):
             with st.expander("Agent execution details"):
                 debug = message["debug"]
@@ -519,8 +654,13 @@ for index, message in enumerate(st.session_state.messages):
                     for source in sources:
                         st.markdown(f"- `{source}`")
 
+                st.markdown("**Conversation summary**")
+                st.write(debug.get("summary") or "Not available")
 
 
+# ----------------------------------------------------------------------
+# Chat input
+# ----------------------------------------------------------------------
 if question := st.chat_input("Ask something about your documents..."):
 
     st.session_state.messages.append({
@@ -537,6 +677,8 @@ if question := st.chat_input("Ask something about your documents..."):
             try:
                 result = app.invoke({
                     "question": question,
+                    "chat_history": st.session_state.chat_history,
+                    "summary": st.session_state.summary,
                     "rewritten_question": "",
                     "documents": [],
                     "relevant_docs": [],
@@ -550,18 +692,25 @@ if question := st.chat_input("Ask something about your documents..."):
 
                 st.markdown(answer)
 
+                # -------- Persist memory --------
+                st.session_state.chat_history = result.get(
+                    "chat_history", st.session_state.chat_history
+                )
+                st.session_state.summary = result.get(
+                    "summary", st.session_state.summary
+                )
+
                 relevant_docs = result.get("relevant_docs", [])
 
                 debug = {
-                    "rewritten_question": result.get(
-                        "rewritten_question", ""
-                    ),
+                    "rewritten_question": result.get("rewritten_question", ""),
                     "retrieved_count": len(result.get("documents", [])),
                     "relevant_count": len(relevant_docs),
                     "sources": list(dict.fromkeys(
                         doc.metadata.get("filename", "unknown")
                         for doc in relevant_docs
                     )),
+                    "summary": st.session_state.summary,
                 }
 
                 with st.expander("Agent execution details"):
@@ -578,6 +727,9 @@ if question := st.chat_input("Ask something about your documents..."):
                         st.markdown("**Sources used**")
                         for source in debug["sources"]:
                             st.markdown(f"- `{source}`")
+
+                    st.markdown("**Conversation summary**")
+                    st.write(debug["summary"] or "Not available")
 
                 st.session_state.messages.append({
                     "role": "assistant",
@@ -602,7 +754,9 @@ if question := st.chat_input("Ask something about your documents..."):
                 })
 
 
-
+# ----------------------------------------------------------------------
+# Footer
+# ----------------------------------------------------------------------
 st.markdown("""
 <div class="footer">
     KNOWMESH AGENT · BUILT WITH LANGGRAPH & STREAMLIT
