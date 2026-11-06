@@ -14,10 +14,7 @@ from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, END
 
 load_dotenv()
-
-# ======================
-# CONFIG
-# ======================
+# config
 CHROMA_DIR = "chroma_db"
 PARENTS_PATH = "parent_store.pkl"
 COLLECTION_NAME = "knowmesh"
